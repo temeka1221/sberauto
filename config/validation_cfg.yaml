@@ -1,0 +1,16 @@
+validation:
+  sessions:
+    utm_source: object
+    utm_medium: object
+    visit_date: datetime64[ns]
+    visit_number: int64
+    session_id: object
+    device_os: object
+    device_brand: object
+    device_model: object
+
+  hits:
+    hit_date: datetime64[ns]
+    hit_number: int64
+    session_id: object
+    event_label: object
