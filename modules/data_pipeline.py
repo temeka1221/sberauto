@@ -4,11 +4,12 @@
 приведение типов данных к ожидаемым форматам, удаление дубликатов
 и оптимизацию вставки данных в базу данных.
 
+
 Функции:
 - process_data: Основная функция, которая загружает данные из файлов,
-  обрабатывает их, удаляет дубликаты и некорректные данные,
+  обрабатывает их, удаляет дубликаты, некорректные данные и строки с некорректными типами,
   и загружает в базу данных.
-- to_lowercase: Приводит все текстовые столбцы датафрейма к нижнему регистру для унификации.
+- clean_string_columns: Приводит столбцы датафрейма к нижнему регистру и удаляет пробелы.
 - validate_data_types: Проверяет и приводит типы данных в столбцах датафрейма к ожидаемым,
   логгируя предупреждения в случае несоответствий.
 - remove_outliers: Удаляет выбросы из датафрейма на основе межквартильного размаха,
@@ -20,6 +21,9 @@
 
 import logging
 import warnings
+import os
+
+import yaml
 
 import pandas as pd
 
@@ -30,12 +34,26 @@ from modules.create_tables import create_tables, create_database_if_not_exists
 
 warnings.filterwarnings('ignore')
 
+path = os.environ.get('PROJECT_PATH', '.')
 
-def to_lowercase(dataframe: pd.DataFrame) -> pd.DataFrame:
-    """Приводит столбцы к нижнему регистру"""
-    for col in dataframe.select_dtypes(include=['object']).columns:
-        dataframe[col] = dataframe[col].apply(lambda x: x.lower() if isinstance(x, str) else x)
-    return dataframe
+
+def clean_string_columns(df: pd.DataFrame) -> pd.DataFrame:
+    """Приведение к нижнему регистру и удаление пробелов"""
+    for col in df.select_dtypes(include=['object']).columns:
+        # Проверка на содержание только строк
+        if df[col].dtype == 'object' and df[col].notna().all():
+            try:
+                df[col] = df[col].str.lower().str.strip()
+            except AttributeError:
+                logging.warning('%s имеет некорректный тип', col)
+                continue
+    return df
+
+
+def load_validation_config(cfg_path: str) -> dict:
+    """Загружает конфигурацию валидации из YAML-файла"""
+    with open(cfg_path, 'r') as f:
+        return yaml.safe_load(f)
 
 
 def validate_data_types(df: pd.DataFrame, expected_dtypes: dict) -> pd.DataFrame:
@@ -45,7 +63,10 @@ def validate_data_types(df: pd.DataFrame, expected_dtypes: dict) -> pd.DataFrame
             logging.warning(
                 '%s имеет некорректный тип. Ожидался %s, а получен %s',
                 col, dtype, df[col].dtype)
-            df[col] = df[col].astype(dtype, errors='ignore')
+            try:
+                df[col] = df[col].astype(dtype, errors='ignore')
+            except Exception as e:
+                logging.error('Произошла ошибка при приведении %s к типу %s: %s', col, dtype, e)
     return df
 
 
@@ -83,7 +104,7 @@ def load_data() -> tuple[pd.DataFrame, pd.DataFrame]:
         logging.error('Файл пуст')
         return
     except Exception as e:
-        logging.error(f'Произошла ошибка: %s', e)
+        logging.error('Произошла ошибка: %s', e)
         return
 
     logging.info('Данные успешно загружены')
@@ -100,34 +121,15 @@ def load_data() -> tuple[pd.DataFrame, pd.DataFrame]:
     df_sessions = df_sessions[pd.to_datetime(df_sessions['visit_date'], errors='coerce').notna()]
     df_hits = df_hits[pd.to_datetime(df_hits['hit_date'], errors='coerce').notna()]
 
-    # Приведение к нижнему регистру
-    df_sessions = to_lowercase(df_sessions)
-    df_hits = to_lowercase(df_hits)
-
-    # Удаление лишних пробелов
-    df_sessions = df_sessions.map(lambda x: x.strip() if isinstance(x, str) else x)
-    df_hits = df_hits.map(lambda x: x.strip() if isinstance(x, str) else x)
+    # Очистка строковых столбцов
+    df_sessions = clean_string_columns(df_sessions)
+    df_hits = clean_string_columns(df_hits)
 
     # Приведение столбцов к ожидаемым типам данных
-    expected_dtypes_sessions = {
-        'utm_source': 'object',
-        'utm_medium': 'object',
-        'visit_date': 'datetime64[ns]',
-        'visit_number': 'int64',
-        'session_id': 'object',
-        'device_os': 'object',
-        'device_brand': 'object',
-        'device_model': 'object'
-    }
-    df_sessions = validate_data_types(df_sessions, expected_dtypes_sessions)
+    validation_cfg = load_validation_config(path + '/config/validation_cfg.yaml')
 
-    expected_dtypes_hits = {
-        'hit_date': 'datetime64[ns]',
-        'hit_number': 'int64',
-        'session_id': 'object',
-        'event_label': 'object'
-    }
-    df_hits = validate_data_types(df_hits, expected_dtypes_hits)
+    df_sessions = validate_data_types(df_sessions, validation_cfg['validation']['sessions'])
+    df_hits = validate_data_types(df_hits, validation_cfg['validation']['hits'])
 
     # Проверка логической целостности данных
     df_sessions = df_sessions[df_sessions['utm_medium'].isin([
