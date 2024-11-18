@@ -106,6 +106,7 @@ prison==0.2.1
 protobuf==4.25.3
 psutil==6.0.0
 psycopg2==2.9.3
+pyarrow==18.0.0
 pycparser==2.22
 Pygments==2.18.0
 PyJWT==2.8.0
