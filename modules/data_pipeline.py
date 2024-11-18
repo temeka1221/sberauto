@@ -6,9 +6,8 @@
 
 
 Функции:
-- process_data: Основная функция, которая загружает данные из файлов,
-  обрабатывает их, удаляет дубликаты, некорректные данные и строки с некорректными типами,
-  и загружает в базу данных.
+- load_data: загружает данные из файлов, обрабатывает их, удаляет дубликаты и строки с некорректными типами.
+- insert_data: загружает данные в базу данных, создает таблицы, если они еще не существуют.
 - clean_string_columns: Приводит столбцы датафрейма к нижнему регистру и удаляет пробелы.
 - validate_data_types: Проверяет и приводит типы данных в столбцах датафрейма к ожидаемым,
   логгируя предупреждения в случае несоответствий.
@@ -95,8 +94,8 @@ def load_data() -> tuple[pd.DataFrame, pd.DataFrame]:
 
     # Загрузка данных с обработкой ошибок
     try:
-        df_sessions = pd.read_pickle('~/Downloads/ga_sessions.pkl')
-        df_hits = pd.read_pickle('~/Downloads/ga_hits.pkl')
+        df_sessions = pd.read_parquet('~/Downloads/ga_sessions.parquet.gz')
+        df_hits = pd.read_parquet('~/Downloads/ga_hits.parquet.gz')
     except FileNotFoundError as e:
         logging.error('Файл не найден: %s', e)
         return
